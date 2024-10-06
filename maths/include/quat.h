@@ -2,7 +2,6 @@
 #include "mat4.h"
 #include "vec3.h"
 
-#define QUAT_EPSILON 0.000001f
 #define QUAT_DEG2RAD 0.0174533f
 #define QUAT_RAD2DEG 57.2958f
 
