@@ -1,31 +1,117 @@
-# Use the latest 2.1 version of CircleCI pipeline process engine.
-# See: https://circleci.com/docs/configuration-reference
 version: 2.1
 
-# Define a job to be invoked later in a workflow.
-# See: https://circleci.com/docs/jobs-steps/#jobs-overview & https://circleci.com/docs/configuration-reference/#jobs
 jobs:
-  say-hello:
-    # Specify the execution environment. You can specify an image from Docker Hub or use one of our convenience images from CircleCI's Developer Hub.
-    # See: https://circleci.com/docs/executor-intro/ & https://circleci.com/docs/configuration-reference/#executor-job
-    docker:
-      # Specify the version you desire here
-      # See: https://circleci.com/developer/images/image/cimg/base
-      - image: cimg/base:current
-
-    # Add steps to the job
-    # See: https://circleci.com/docs/jobs-steps/#steps-overview & https://circleci.com/docs/configuration-reference/#steps
+  build-test-linux:
+    machine:
+      image: ubuntu-2204:2023.07.1
+    resource_class: arm.medium
     steps:
-      # Checkout the code as the first step.
       - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:uGkIYtXviCrn6fwm/9e/4RBK5GzKmWmJPp+CFgnig0M"
       - run:
-          name: "Say hello"
-          command: "echo Hello, World!"
+          name: Add GitHub to known hosts
+          command: |
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - run:
+          name: Set up Git Config
+          command: |
+            git config --global url."git@github.com:".insteadOf "https://github.com/"
 
-# Orchestrate jobs using workflows
-# See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
+      - run:
+          name: Install CMake
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y cmake libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            sudo apt-get install -y libgl1-mesa-dev mesa-common-dev libglu1-mesa-dev freeglut3-dev
+      - run:
+          name: Verify CMake installation
+          command: cmake --version
+      - run:
+          name: Build with CMake
+          command: |
+            mkdir build
+            cd build
+            cmake -DBUILD_WITH_TESTS=1 ..
+            cmake --build . --config Release -j8
+
+  # New Windows job
+  build-test-windows:
+    machine:
+      # Use Windows machine executor with version
+      image: 'windows-server-2019-vs2019:2024.05.1'
+      resource_class: windows.medium
+      shell: powershell.exe
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:uGkIYtXviCrn6fwm/9e/4RBK5GzKmWmJPp+CFgnig0M"
+      - run:
+          name: Add GitHub to known hosts
+          shell: bash.exe
+          command: |
+            mv ~/.ssh/id_rsa_* ~/.ssh/id_rsa
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - run:
+          name: Download and Install CMake
+          command: |
+            $ProgressPreference = "SilentlyContinue"
+            Invoke-WebRequest -URI https://github.com/Kitware/CMake/releases/download/v3.16.4/cmake-3.16.4-win64-x64.zip -OutFile $Env:HOMEPATH\cmake-3.16.4-win64-x64.zip
+            Expand-Archive $Env:HOMEPATH\cmake-3.16.4-win64-x64.zip -DestinationPath $Env:HOMEPATH
+      - run:
+          name: Build with CMake
+          command: |
+            $cmakePath = "$Env:HOMEPATH\cmake-3.16.4-win64-x64\bin"
+            $env:PATH += ";$cmakePath"
+            cmake --version
+            mkdir build
+            cd build
+            cmake -DBUILD_WITH_TESTS=1 ..
+            cmake --build . --config Release -j8
+
+  build-test-mac:
+
+    macos:
+      xcode: 15.4.0
+    resource_class: macos.m1.medium.gen1
+
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:uGkIYtXviCrn6fwm/9e/4RBK5GzKmWmJPp+CFgnig0M"
+      - run:
+          name: Add GitHub to known hosts
+          command: |
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - run:
+          name: Set up Git Config
+          command: |
+            git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+      - run:
+          name: Install Dependencies
+          command: |
+            brew update
+            brew install cmake
+      - run:
+          name: Verify CMake installation
+          command: cmake --version
+      - run:
+          name: Build with CMake
+          command: |
+            mkdir build
+            cd build
+            cmake -DBUILD_WITH_TESTS=1 ..
+            cmake --build . --config Release -j8
+
 workflows:
-  say-hello-workflow: # This is the name of the workflow, feel free to change it to better match your workflow.
-    # Inside the workflow, you define the jobs you want to run.
+  build-and-test-workflow:
     jobs:
-      - say-hello
+      - build-test-linux
+      - build-test-windows
+      - build-test-mac
